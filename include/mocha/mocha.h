@@ -3,8 +3,6 @@
 #include "otp.h"
 #include <coreinit/filesystem.h>
 #include <coreinit/filesystem_fsa.h>
-#include <mocha/commands.h>
-#include <mocha/otp.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
