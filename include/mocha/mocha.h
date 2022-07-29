@@ -1,4 +1,6 @@
 #pragma once
+#include "commands.h"
+#include "otp.h"
 #include <coreinit/filesystem.h>
 #include <coreinit/filesystem_fsa.h>
 #include <mocha/commands.h>
