@@ -22,6 +22,8 @@ int __fsa_open(struct _reent *r,
         return -1;
     }
 
+    bool createFileManually = false;
+
     // Map flags to open modes
     int commonFlagMask = O_CREAT | O_TRUNC | O_APPEND;
     if (((flags & O_ACCMODE) == O_RDONLY) && !(flags & commonFlagMask)) {
@@ -36,6 +38,12 @@ int __fsa_open(struct _reent *r,
         fsMode = "a";
     } else if (((flags & O_ACCMODE) == O_RDWR) && ((flags & commonFlagMask) == (O_CREAT | O_APPEND))) {
         fsMode = "a+";
+    } else if (((flags & O_ACCMODE) == O_WRONLY) && ((flags & commonFlagMask) == (O_CREAT))) {
+        // Cafe OS doesn't have a matching mode for this, so we have to be creative and create file manually.
+        createFileManually = true;
+        // It's not possible to open a file with write only mode which doesn't truncate the file
+        // Technically we could read from the file, but our read implementation is blocking this.
+        fsMode = "r+";
     } else {
         r->_errno = EINVAL;
         return -1;
@@ -58,11 +66,36 @@ int __fsa_open(struct _reent *r,
 
     uint32_t preAllocSize = 0;
 
+    // Check if we need to create the file manually
+    if (createFileManually) {
+        FSStat stat;
+        status = FSAGetStat(deviceData->clientHandle, fixedPath, &stat);
+        if (status == FS_ERROR_NOT_FOUND) {
+            status = FSAOpenFileEx(deviceData->clientHandle, fixedPath, "w", translatedMode, openFlags, preAllocSize, &fd);
+            if (status == FS_ERROR_OK) {
+                FSACloseFile(deviceData->clientHandle, fd);
+                fd = -1;
+            }
+        }
+        if (status < 0) {
+            free(fixedPath);
+            r->_errno = __fsa_translate_error(status);
+            return -1;
+        }
+    }
+
     status = FSAOpenFileEx(deviceData->clientHandle, fixedPath, fsMode, translatedMode, openFlags, preAllocSize, &fd);
     if (status < 0) {
         DEBUG_FUNCTION_LINE_ERR("FSAOpenFileEx(0x%08X, %s, %s, 0x%X, 0x%08X, 0x%08X, 0x%08X) failed: %s", deviceData->clientHandle, fixedPath, fsMode, translatedMode, openFlags, preAllocSize, &fd, FSAGetStatusStr(status));
         r->_errno = __fsa_translate_error(status);
         free(fixedPath);
+        return -1;
+    }
+
+    // If O_CREAT and O_EXCL are set, open() shall fail if the file exists.
+    if (flags & (O_EXCL | O_CREAT)) {
+        FSACloseFile(deviceData->clientHandle, fd);
+        r->_errno = EEXIST;
         return -1;
     }
 
@@ -82,6 +115,8 @@ int __fsa_open(struct _reent *r,
             }
             return -1;
         }
+    } else {
+        file->offset = 0;
     }
     return 0;
 }

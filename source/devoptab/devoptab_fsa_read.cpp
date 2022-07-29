@@ -64,9 +64,9 @@ ssize_t __fsa_read(struct _reent *r, void *fd, char *ptr, size_t len) {
             memcpy(ptr, alignedBuffer, status);
         }
 
+        file->offset += status;
         bytesRead += status;
         ptr += status;
-
 
         if ((size_t) status != size) {
             return bytesRead; // partial read
